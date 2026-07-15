@@ -7,11 +7,11 @@ interface StatusBadgeProps {
 }
 
 const statusClasses: Record<RelationshipStatus, string> = {
-  talking: "bg-status-talking/15 text-status-talking-foreground border-status-talking/30",
+  talking: "bg-status-talking/25 text-status-talking-foreground border-status-talking/40",
   situationship:
-    "bg-status-situationship/15 text-status-situationship-foreground border-status-situationship/30",
-  taken: "bg-status-taken/15 text-status-taken-foreground border-status-taken/30",
-  ex: "bg-status-ex/15 text-status-ex-foreground border-status-ex/30",
+    "bg-status-situationship/25 text-status-situationship-foreground border-status-situationship/40",
+  taken: "bg-status-taken/25 text-status-taken-foreground border-status-taken/40",
+  ex: "bg-status-ex/25 text-status-ex-foreground border-status-ex/40",
   backup: "bg-secondary text-secondary-foreground border-border/40",
 };
 
