@@ -168,10 +168,10 @@
 @utility no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
-}
 
-@utility no-scrollbar::-webkit-scrollbar {
-  display: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @utility line-clamp-2 {
