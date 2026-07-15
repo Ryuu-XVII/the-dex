@@ -99,7 +99,7 @@ export function ProfileDetail({ profile, onClose }: ProfileDetailProps) {
             <div className="rounded-2xl border border-border/60 bg-card p-4">
               <p className="text-xs text-muted-foreground">Lies logged</p>
               <div className="mt-1 flex items-center gap-2">
-                <MessageSquareWarning className="h-5 w-5 text-destructive" />
+                <MessageSquareWarning className="h-5 w-5 text-love" />
                 <span className="text-2xl font-bold text-foreground">
                   {profile.lies.length}
                 </span>
