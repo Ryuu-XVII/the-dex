@@ -12,8 +12,6 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
-import { Inter, Space_Grotesk } from "@fontsource/space-grotesk?url";
-
 
 function NotFoundComponent() {
   return (
