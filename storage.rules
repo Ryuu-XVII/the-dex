@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Keep this list identical to VITE_ADMIN_UIDS in .env and isAdmin() in
+    // firestore.rules — duplicated because Storage rules can't read Firestore.
+    function isAdmin() {
+      return request.auth != null && request.auth.uid in [
+        "qkxDjZvpssX1j149eqq1B7S5OxG3"
+      ];
+    }
+
+    match /profile-photos/{userId}/{fileName} {
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+      allow write: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

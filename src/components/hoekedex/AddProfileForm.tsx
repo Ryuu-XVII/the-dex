@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,8 +22,11 @@ interface AddProfileFormProps {
     status: RelationshipStatus;
     rating: number;
     notes: string;
-  }) => void;
+    photoFile?: File;
+  }) => void | Promise<void>;
 }
+
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
 export function AddProfileForm({ onClose, onSubmit }: AddProfileFormProps) {
   const [name, setName] = useState("");
@@ -31,11 +34,42 @@ export function AddProfileForm({ onClose, onSubmit }: AddProfileFormProps) {
   const [status, setStatus] = useState<RelationshipStatus>("talking");
   const [rating, setRating] = useState(7);
   const [notes, setNotes] = useState("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setPhotoError("Please choose an image file.");
+      return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      setPhotoError("Image must be under 5MB.");
+      return;
+    }
+
+    setPhotoError("");
+    setPhotoFile(file);
+    setPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
-    onSubmit({ name, age, status, rating, notes });
+    if (!name.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit({ name, age, status, rating, notes, photoFile: photoFile ?? undefined });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -43,10 +77,7 @@ export function AddProfileForm({ onClose, onSubmit }: AddProfileFormProps) {
       side="bottom"
       className="h-[92dvh] rounded-t-3xl border-t border-border bg-background px-0 pb-0 pt-2"
     >
-      <form
-        onSubmit={handleSubmit}
-        className="flex h-full flex-col"
-      >
+      <form onSubmit={handleSubmit} className="flex h-full flex-col">
         <div className="flex items-center justify-between px-5 pb-2">
           <div className="h-1.5 w-12 rounded-full bg-muted" />
           <Button
@@ -63,24 +94,35 @@ export function AddProfileForm({ onClose, onSubmit }: AddProfileFormProps) {
 
         <div className="flex-1 overflow-y-auto no-scrollbar px-5">
           <SheetHeader className="pb-4 text-left">
-            <SheetTitle className="text-2xl font-bold tracking-tight">
-              New entry
-            </SheetTitle>
-            <p className="text-sm text-muted-foreground">
-              Add someone to your Hoekedex. Photos can be added later.
-            </p>
+            <SheetTitle className="text-2xl font-bold tracking-tight">New entry</SheetTitle>
+            <p className="text-sm text-muted-foreground">Add someone to your Hoekedex.</p>
           </SheetHeader>
 
           <div className="space-y-5">
-            {/* Photo placeholder */}
-            <div className="flex justify-center">
+            {/* Photo */}
+            <div className="flex flex-col items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                className="hidden"
+              />
               <button
                 type="button"
-                className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-border/60 bg-card text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex h-24 w-24 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl border border-dashed border-border/60 bg-card text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
               >
-                <Camera className="h-6 w-6" />
-                <span className="text-[10px] font-medium">Add photo</span>
+                {photoPreview ? (
+                  <img src={photoPreview} alt="Selected" className="h-full w-full object-cover" />
+                ) : (
+                  <>
+                    <Camera className="h-6 w-6" />
+                    <span className="text-[10px] font-medium">Add photo</span>
+                  </>
+                )}
               </button>
+              {photoError && <p className="text-xs text-destructive">{photoError}</p>}
             </div>
 
             {/* Name */}
@@ -115,21 +157,16 @@ export function AddProfileForm({ onClose, onSubmit }: AddProfileFormProps) {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Status</Label>
-                <Select
-                  value={status}
-                  onValueChange={(v) => setStatus(v as RelationshipStatus)}
-                >
+                <Select value={status} onValueChange={(v) => setStatus(v as RelationshipStatus)}>
                   <SelectTrigger className="h-12 rounded-xl border-border/60 bg-card text-base">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
-                    {(Object.keys(statusLabels) as RelationshipStatus[]).map(
-                      (s) => (
-                        <SelectItem key={s} value={s} className="text-base">
-                          {statusLabels[s]}
-                        </SelectItem>
-                      ),
-                    )}
+                    {(Object.keys(statusLabels) as RelationshipStatus[]).map((s) => (
+                      <SelectItem key={s} value={s} className="text-base">
+                        {statusLabels[s]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -176,10 +213,11 @@ export function AddProfileForm({ onClose, onSubmit }: AddProfileFormProps) {
         <div className="safe-bottom border-t border-border/60 bg-card/80 p-4 backdrop-blur-md">
           <Button
             type="submit"
-            className="w-full rounded-xl bg-primary py-6 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+            disabled={submitting}
+            className="w-full rounded-xl bg-primary py-6 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
           >
             <UserPlus className="mr-2 h-4 w-4" />
-            Add to Hoekedex
+            {submitting ? "Adding..." : "Add to Hoekedex"}
           </Button>
         </div>
       </form>

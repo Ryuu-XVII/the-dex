@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Keep this list identical to VITE_ADMIN_UIDS in .env — the client-side
+    // env var only controls UI routing, this is the actual enforcement point.
+    function isAdmin() {
+      return request.auth != null && request.auth.uid in [
+        "qkxDjZvpssX1j149eqq1B7S5OxG3"
+      ];
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /profiles/{profileId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+  }
+}

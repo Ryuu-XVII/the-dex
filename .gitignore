@@ -11,10 +11,27 @@ node_modules
 dist
 dist-ssr
 .output
+firebase-debug.log
+.firebase
+graphify-out
 .vinxi
 .tanstack/**
 .nitro
 *.local
+.env
+
+# Tauri build output / generated platform projects
+src-tauri/target
+src-tauri/gen
+android-build
+*.apk
+*.aab
+*.ipa
+
+# Android release signing secrets — never commit
+src-tauri/*.jks
+src-tauri/*.keystore
+src-tauri/keystore.properties
 
 # Wrangler / Cloudflare
 .wrangler/
@@ -30,3 +47,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.vercel
+.env*

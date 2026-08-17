@@ -1,19 +1,14 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useMemo, useEffect } from "react";
 import { Sheet, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProfileCard } from "@/components/hoekedex/ProfileCard";
 import { ProfileDetail } from "@/components/hoekedex/ProfileDetail";
 import { AddProfileForm } from "@/components/hoekedex/AddProfileForm";
-import { mockProfiles } from "@/components/hoekedex/data";
-import {
-  type Profile,
-  type RelationshipStatus,
-  statusLabels,
-  statusEmoji,
-} from "@/components/hoekedex/types";
-import { Search, Plus, SlidersHorizontal } from "lucide-react";
+import { useProfiles } from "@/hooks/use-profiles";
+import { type RelationshipStatus, statusLabels, statusEmoji } from "@/components/hoekedex/types";
+import { Search, Plus, SlidersHorizontal, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -63,19 +58,23 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
 }
 
 function Index() {
-  const [profiles, setProfiles] = useState<Profile[]>(mockProfiles);
-  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
+  const navigate = useNavigate();
+  const { profiles, loading, addProfile, addLie, userId } = useProfiles();
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const selectedProfile = profiles.find((p) => p.id === selectedProfileId) ?? null;
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState<RelationshipStatus | "all">(
-    "all",
-  );
+  const [activeFilter, setActiveFilter] = useState<RelationshipStatus | "all">("all");
+
+  useEffect(() => {
+    if (!loading && !userId) {
+      navigate({ to: "/login" });
+    }
+  }, [loading, userId, navigate]);
 
   const filteredProfiles = useMemo(() => {
     return profiles.filter((p) => {
-      const matchesSearch = p.name
-        .toLowerCase()
-        .includes(search.toLowerCase());
+      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
       const matchesFilter = activeFilter === "all" || p.status === activeFilter;
       return matchesSearch && matchesFilter;
     });
@@ -83,33 +82,30 @@ function Index() {
 
   const stats = {
     total: profiles.length,
-    lies: profiles.reduce((acc, p) => acc + p.lies.length, 0),
+    lies: profiles.reduce((acc, p) => acc + (p.lies?.length || 0), 0),
     avgRating:
-      profiles.length > 0
-        ? profiles.reduce((acc, p) => acc + p.rating, 0) / profiles.length
-        : 0,
+      profiles.length > 0 ? profiles.reduce((acc, p) => acc + p.rating, 0) / profiles.length : 0,
   };
 
-  const handleAddProfile = (data: {
+  const handleAddProfile = async (data: {
     name: string;
     age: string;
     status: RelationshipStatus;
     rating: number;
     notes: string;
+    photoFile?: File;
   }) => {
-    const newProfile: Profile = {
-      id: crypto.randomUUID(),
-      name: data.name,
-      age: data.age ? Number(data.age) : undefined,
-      status: data.status,
-      rating: data.rating,
-      notes: data.notes,
-      lastUpdated: new Date().toISOString().split("T")[0],
-      lies: [],
-    };
-    setProfiles((prev) => [newProfile, ...prev]);
+    await addProfile(data);
     setIsAddOpen(false);
   };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background shadow-2xl sm:max-w-md">
@@ -120,9 +116,7 @@ function Index() {
             <h1 className="font-display text-2xl font-bold tracking-tight text-gradient">
               Hoekedex
             </h1>
-            <p className="text-xs text-muted-foreground">
-              Your private dating directory
-            </p>
+            <p className="text-xs text-muted-foreground">Your private dating directory</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
@@ -176,9 +170,7 @@ function Index() {
                 )}
               >
                 {filter === "all" ? "All" : statusEmoji[filter]}
-                <span className="ml-1">
-                  {filter === "all" ? "" : statusLabels[filter]}
-                </span>
+                <span className="ml-1">{filter === "all" ? "" : statusLabels[filter]}</span>
               </button>
             ))}
           </div>
@@ -197,23 +189,24 @@ function Index() {
             {filteredProfiles.map((profile) => (
               <Sheet
                 key={profile.id}
-                open={selectedProfile?.id === profile.id}
+                open={selectedProfileId === profile.id}
                 onOpenChange={(open) => {
-                  if (!open) setSelectedProfile(null);
+                  if (!open) setSelectedProfileId(null);
                 }}
               >
                 <SheetTrigger asChild>
                   <div>
                     <ProfileCard
                       profile={profile}
-                      onClick={() => setSelectedProfile(profile)}
+                      onClick={() => setSelectedProfileId(profile.id)}
                     />
                   </div>
                 </SheetTrigger>
-                {selectedProfile?.id === profile.id && (
+                {selectedProfileId === profile.id && selectedProfile && (
                   <ProfileDetail
-                    profile={profile}
-                    onClose={() => setSelectedProfile(null)}
+                    profile={selectedProfile}
+                    onAddLie={(lie) => addLie(selectedProfile.id, lie)}
+                    onClose={() => setSelectedProfileId(null)}
                   />
                 )}
               </Sheet>
@@ -236,10 +229,7 @@ function Index() {
               </Button>
             </SheetTrigger>
             {isAddOpen && (
-              <AddProfileForm
-                onClose={() => setIsAddOpen(false)}
-                onSubmit={handleAddProfile}
-              />
+              <AddProfileForm onClose={() => setIsAddOpen(false)} onSubmit={handleAddProfile} />
             )}
           </Sheet>
         </div>

@@ -1,15 +1,26 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { signOut } from "firebase/auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { mockProfiles } from "@/components/hoekedex/data";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { StatusBadge } from "@/components/hoekedex/StatusBadge";
 import { RatingStars } from "@/components/hoekedex/RatingStars";
-import {
-  lieSeverityEmoji,
-  lieSeverityLabels,
-  type Profile,
-} from "@/components/hoekedex/types";
+import { useAllProfiles, setProfileHidden, removeProfile } from "@/hooks/use-profiles";
+import { useAuthUser } from "@/hooks/use-auth-user";
+import { auth } from "@/lib/firebase";
+import { isAdminUid } from "@/lib/admin";
+import { lieSeverityEmoji, lieSeverityLabels, type Profile } from "@/components/hoekedex/types";
 import {
   Search,
   Users,
@@ -19,6 +30,7 @@ import {
   Shield,
   ChevronRight,
   TrendingUp,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,19 +43,6 @@ export const Route = createFileRoute("/admin")({
       { name: "robots", content: "noindex" },
     ],
   }),
-});
-
-// Mock: pretend each profile belongs to a different user
-const mockUsers = [
-  { id: "u1", name: "Jordan K.", email: "jordan@hoekedex.app", avatar: "🦊" },
-  { id: "u2", name: "Marcus L.", email: "marcus@hoekedex.app", avatar: "🐺" },
-  { id: "u3", name: "Devon P.", email: "devon@hoekedex.app", avatar: "🦉" },
-  { id: "u4", name: "Riley S.", email: "riley@hoekedex.app", avatar: "🐻" },
-];
-
-const usersWithPosts = mockUsers.map((user, idx) => {
-  const profiles = mockProfiles.filter((_, i) => i % mockUsers.length === idx);
-  return { ...user, profiles };
 });
 
 function StatCard({
@@ -65,18 +64,50 @@ function StatCard({
           <Icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="mt-3 font-display text-2xl font-bold text-foreground">
-        {value}
-      </p>
+      <p className="mt-3 font-display text-2xl font-bold text-foreground">{value}</p>
     </div>
   );
 }
 
 function AdminDashboard() {
+  const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuthUser();
+  const isAdmin = isAdminUid(user?.uid);
+  const { allProfiles, loading: profilesLoading } = useAllProfiles();
   const [search, setSearch] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(
-    usersWithPosts[0]?.id ?? null,
-  );
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      navigate({ to: "/login" });
+    } else if (!isAdmin) {
+      navigate({ to: "/" });
+    }
+  }, [authLoading, user, isAdmin, navigate]);
+
+  const loading = authLoading || profilesLoading;
+
+  const usersWithPosts = useMemo(() => {
+    const usersMap = new Map<
+      string,
+      { id: string; name: string; email: string; avatar: string; profiles: Profile[] }
+    >();
+    allProfiles.forEach((p) => {
+      const uid = (p as any).userId || "anonymous";
+      if (!usersMap.has(uid)) {
+        usersMap.set(uid, {
+          id: uid,
+          name: uid === "anonymous" ? "Anonymous" : `User ${uid.slice(0, 4)}`,
+          email: uid === "anonymous" ? "anon@hoekedex.app" : `${uid.slice(0, 4)}@hoekedex.app`,
+          avatar: "👤",
+          profiles: [],
+        });
+      }
+      usersMap.get(uid)!.profiles.push(p);
+    });
+    return Array.from(usersMap.values());
+  }, [allProfiles]);
 
   const filteredUsers = useMemo(() => {
     if (!search) return usersWithPosts;
@@ -87,16 +118,24 @@ function AdminDashboard() {
         u.email.toLowerCase().includes(q) ||
         u.profiles.some((p) => p.name.toLowerCase().includes(q)),
     );
-  }, [search]);
+  }, [search, usersWithPosts]);
 
-  const selectedUser =
-    usersWithPosts.find((u) => u.id === selectedUserId) ?? null;
+  const selectedUser = usersWithPosts.find((u) => u.id === selectedUserId) ?? null;
 
-  const totalPosts = mockProfiles.length;
-  const totalLies = mockProfiles.reduce((a, p) => a + p.lies.length, 0);
-  const avgRating = (
-    mockProfiles.reduce((a, p) => a + p.rating, 0) / mockProfiles.length
-  ).toFixed(1);
+  const totalPosts = allProfiles.length;
+  const totalLies = allProfiles.reduce((a, p) => a + (p.lies?.length || 0), 0);
+  const avgRating =
+    allProfiles.length > 0
+      ? (allProfiles.reduce((a, p) => a + p.rating, 0) / allProfiles.length).toFixed(1)
+      : "0.0";
+
+  if (loading || !isAdmin) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background pb-10">
@@ -108,21 +147,18 @@ function AdminDashboard() {
               <Shield className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="font-display text-lg font-bold text-foreground">
-                Admin
-              </h1>
-              <p className="text-[11px] text-muted-foreground">
-                Hoekedex control room
-              </p>
+              <h1 className="font-display text-lg font-bold text-foreground">Admin</h1>
+              <p className="text-[11px] text-muted-foreground">Hoekedex control room</p>
             </div>
           </div>
-          <Link
-            to="/login"
+          <button
+            type="button"
+            onClick={() => signOut(auth).then(() => navigate({ to: "/login" }))}
             className="flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
           >
             <LogOut className="h-3.5 w-3.5" />
             Sign out
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -131,7 +167,7 @@ function AdminDashboard() {
         <section className="grid grid-cols-3 gap-3">
           <StatCard
             label="Users"
-            value={mockUsers.length}
+            value={usersWithPosts.length}
             icon={Users}
             accent="bg-primary/15 text-primary-foreground"
           />
@@ -152,13 +188,9 @@ function AdminDashboard() {
         <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/50 px-4 py-3">
           <div className="flex items-center gap-2">
             <Star className="h-4 w-4 text-gold" />
-            <span className="text-xs text-muted-foreground">
-              Platform avg rating
-            </span>
+            <span className="text-xs text-muted-foreground">Platform avg rating</span>
           </div>
-          <span className="font-display text-lg font-bold text-gold">
-            {avgRating}
-          </span>
+          <span className="font-display text-lg font-bold text-gold">{avgRating}</span>
         </div>
 
         {/* Search */}
@@ -182,16 +214,11 @@ function AdminDashboard() {
           <div className="space-y-2">
             {filteredUsers.map((user) => {
               const isActive = user.id === selectedUserId;
-              const userLies = user.profiles.reduce(
-                (a, p) => a + p.lies.length,
-                0,
-              );
+              const userLies = user.profiles.reduce((a, p) => a + p.lies.length, 0);
               return (
                 <button
                   key={user.id}
-                  onClick={() =>
-                    setSelectedUserId(isActive ? null : user.id)
-                  }
+                  onClick={() => setSelectedUserId(isActive ? null : user.id)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition-all",
                     isActive
@@ -203,19 +230,13 @@ function AdminDashboard() {
                     {user.avatar}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {user.name}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {user.email}
-                    </p>
+                    <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                       <span>{user.profiles.length} posts</span>
-                      <span className="text-destructive-foreground">
-                        {userLies} lies
-                      </span>
+                      <span className="text-destructive-foreground">{userLies} lies</span>
                     </div>
                     <ChevronRight
                       className={cn(
@@ -262,6 +283,30 @@ function AdminDashboard() {
 
 function AdminProfileRow({ profile }: { profile: Profile }) {
   const [expanded, setExpanded] = useState(false);
+  const [hidePending, setHidePending] = useState(false);
+  const [removePending, setRemovePending] = useState(false);
+
+  const handleToggleHidden = async () => {
+    setHidePending(true);
+    try {
+      await setProfileHidden(profile.id, !profile.hidden);
+    } catch (err) {
+      console.error("Failed to update entry visibility:", err);
+    } finally {
+      setHidePending(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setRemovePending(true);
+    try {
+      await removeProfile(profile.id);
+    } catch (err) {
+      console.error("Failed to remove entry:", err);
+      setRemovePending(false);
+    }
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
       <button
@@ -281,12 +326,13 @@ function AdminProfileRow({ profile }: { profile: Profile }) {
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-foreground">
-              {profile.name}
-            </p>
+            <p className="truncate text-sm font-semibold text-foreground">{profile.name}</p>
             {profile.age && (
-              <span className="text-[11px] text-muted-foreground">
-                {profile.age}
+              <span className="text-[11px] text-muted-foreground">{profile.age}</span>
+            )}
+            {profile.hidden && (
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                Hidden
               </span>
             )}
           </div>
@@ -319,10 +365,7 @@ function AdminProfileRow({ profile }: { profile: Profile }) {
               </p>
               <ul className="mt-1 space-y-2">
                 {profile.lies.map((lie) => (
-                  <li
-                    key={lie.id}
-                    className="rounded-xl border border-border/50 bg-card/70 p-2.5"
-                  >
+                  <li key={lie.id} className="rounded-xl border border-border/50 bg-card/70 p-2.5">
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <span>{lieSeverityEmoji[lie.severity]}</span>
@@ -341,17 +384,37 @@ function AdminProfileRow({ profile }: { profile: Profile }) {
             <Button
               variant="outline"
               size="sm"
+              disabled={hidePending}
+              onClick={handleToggleHidden}
               className="flex-1 rounded-lg border-border/60 text-xs"
             >
-              Hide entry
+              {profile.hidden ? "Unhide entry" : "Hide entry"}
             </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="flex-1 rounded-lg text-xs"
-            >
-              Remove
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={removePending}
+                  className="flex-1 rounded-lg text-xs"
+                >
+                  Remove
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove this entry?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently deletes "{profile.name}" and all logged lies. This can't be
+                    undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleRemove}>Remove</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       )}

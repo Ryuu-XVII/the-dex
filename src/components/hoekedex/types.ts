@@ -1,9 +1,4 @@
-export type RelationshipStatus =
-  | "talking"
-  | "situationship"
-  | "taken"
-  | "ex"
-  | "backup";
+export type RelationshipStatus = "talking" | "situationship" | "taken" | "ex" | "backup";
 
 export type LieSeverity = "white" | "medium" | "big";
 
@@ -24,6 +19,7 @@ export interface Profile {
   lies: Lie[];
   notes: string;
   lastUpdated: string;
+  hidden?: boolean;
 }
 
 export const statusLabels: Record<RelationshipStatus, string> = {
